@@ -437,6 +437,26 @@ body::after{ display:none; }
   border-radius:var(--radius);margin-top:8px;
 }
 
+/* ── TradingView Chart ── */
+.tv-chart-wrap{
+  background:var(--s2);border:1px solid var(--border);
+  border-radius:var(--radius);overflow:hidden;
+  margin-bottom:16px;
+}
+.tv-chart-header{
+  display:flex;align-items:center;justify-content:space-between;
+  padding:10px 14px;border-bottom:1px solid var(--border);
+}
+.tv-chart-title{font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--dim);}
+.tv-chart-tabs{display:flex;gap:4px;}
+.tv-tab{
+  padding:3px 8px;border-radius:3px;border:1px solid var(--border2);
+  background:transparent;color:var(--dim);font-size:10px;
+  cursor:pointer;font-family:'JetBrains Mono',monospace;transition:all 0.15s;
+}
+.tv-tab.active{background:var(--gold);color:#fff;border-color:var(--gold);}
+.tv-tab:hover:not(.active){border-color:var(--gold);color:var(--gold);}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -718,7 +738,7 @@ body::after{ display:none; }
         <div class="section-num">04</div>
         <div class="section-info">
           <div class="section-title">个股分析</div>
-          <div class="section-sub">SP500 & 纳指100涨跌榜 · 消息面+技术面+基本面 · 板块横向对比</div>
+          <div class="section-sub">SP500 & 纳指100涨跌榜 · K线走势图 · 消息面+技术面+基本面</div>
         </div>
       </div>
 
@@ -740,13 +760,28 @@ body::after{ display:none; }
 
       <div class="card mb16">
         <div class="card-header">
-          <div class="card-title">深度分析 — 选择个股</div>
+          <div class="card-title">K线图 + 深度分析</div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;align-items:center;">
-          <input id="stockSearchInput" class="ticker-input" placeholder="输入代码 e.g. NVDA" onkeydown="if(event.key==='Enter')analyzeStock()">
-          <button class="btn btn-gold btn-sm" onclick="analyzeStock()" id="stockAnalyzeBtn">▶ 深度分析</button>
+          <input id="stockSearchInput" class="ticker-input" placeholder="输入代码 e.g. NVDA" onkeydown="if(event.key==='Enter')loadStockChart('stocks')">
+          <button class="btn btn-gold btn-sm" onclick="loadStockChart('stocks')" id="stockAnalyzeBtn">▶ 查看K线+分析</button>
         </div>
         <div class="chips" id="stockChips"></div>
+
+        <!-- TradingView Chart -->
+        <div class="tv-chart-wrap" id="stockChartWrap" style="display:none;">
+          <div class="tv-chart-header">
+            <div class="tv-chart-title" id="stockChartTitle">K线图</div>
+            <div class="tv-chart-tabs">
+              <button class="tv-tab active" onclick="changeInterval('stocks','D')">日线</button>
+              <button class="tv-tab" onclick="changeInterval('stocks','W')">周线</button>
+              <button class="tv-tab" onclick="changeInterval('stocks','60')">60分</button>
+              <button class="tv-tab" onclick="changeInterval('stocks','15')">15分</button>
+            </div>
+          </div>
+          <div id="stockTVChart" style="height:420px;"></div>
+        </div>
+
         <div class="output-box empty" id="stockDeepOutput" style="max-height:500px;overflow-y:auto;">输入股票代码后点击分析...</div>
       </div>
     </div>
@@ -757,14 +792,17 @@ body::after{ display:none; }
         <div class="section-num">05</div>
         <div class="section-info">
           <div class="section-title">自选股分析</div>
-          <div class="section-sub">个人关注股票 · 技术面 + 消息面 + 基本面 · 支撑压力位</div>
+          <div class="section-sub">个人关注股票 · K线走势图 · 技术面 + 消息面 + 基本面</div>
         </div>
       </div>
 
       <div class="card mb16">
         <div class="card-header">
           <div class="card-title">我的自选股</div>
-          <button class="btn btn-gold btn-sm" id="watchlistBtn" onclick="runWatchlist()">▶ 全部分析</button>
+          <div style="display:flex;gap:6px;">
+            <button class="btn btn-ghost btn-sm" id="watchChartBtn" onclick="showWatchCharts()">▶ 查看K线图</button>
+            <button class="btn btn-gold btn-sm" id="watchlistBtn" onclick="runWatchlist()">▶ AI全部分析</button>
+          </div>
         </div>
         <div style="display:flex;gap:8px;margin-bottom:12px;align-items:center;flex-wrap:wrap;">
           <input id="watchInput" class="ticker-input" placeholder="输入代码" onkeydown="if(event.key==='Enter')addWatch()">
@@ -772,6 +810,11 @@ body::after{ display:none; }
           <button class="btn btn-ghost btn-sm" onclick="clearWatch()">清空</button>
         </div>
         <div class="ticker-wrap" id="watchTags"></div>
+      </div>
+
+      <!-- Watch Charts Grid -->
+      <div id="watchCharts" style="display:none;" class="mb16">
+        <div class="grid-2" id="watchChartsGrid"></div>
       </div>
 
       <div id="watchResults"></div>
@@ -1357,8 +1400,170 @@ async function runStocks(){
   finally{btnLoading('stocksBtn',false,'▶ 获取今日榜单');}
 }
 
-async function analyzeStock(){
+// ══════════════════════════════════════════════
+// TradingView Charts
+// ══════════════════════════════════════════════
+let tvWidgets = {};
+let currentStockTicker = '';
+let currentStockInterval = 'D';
+
+function loadStockChart(panel){
   const ticker = document.getElementById('stockSearchInput').value.trim().toUpperCase();
+  if(!ticker){alert('请输入股票代码');return;}
+  currentStockTicker = ticker;
+  currentStockInterval = 'D';
+
+  // Reset tab styles
+  document.querySelectorAll('#panel-stocks .tv-tab').forEach(t=>t.classList.remove('active'));
+  document.querySelector('#panel-stocks .tv-tab').classList.add('active');
+
+  // Show chart wrap
+  const wrap = document.getElementById('stockChartWrap');
+  wrap.style.display = 'block';
+  document.getElementById('stockChartTitle').textContent = ticker + ' — 日线K线图';
+
+  // Destroy old widget
+  document.getElementById('stockTVChart').innerHTML = '';
+
+  // Create TradingView widget
+  const script = document.createElement('script');
+  script.src = 'https://s3.tradingview.com/tv.js';
+  script.onload = ()=>{
+    new TradingView.widget({
+      container_id: 'stockTVChart',
+      symbol: ticker,
+      interval: 'D',
+      timezone: 'America/New_York',
+      theme: document.body.classList.contains('light') ? 'light' : 'light',
+      style: '1',
+      locale: 'zh_CN',
+      toolbar_bg: '#f4f6fb',
+      enable_publishing: false,
+      hide_top_toolbar: false,
+      hide_legend: false,
+      save_image: true,
+      height: 420,
+      width: '100%',
+      studies: ['RSI@tv-basicstudies','MACD@tv-basicstudies','BB@tv-basicstudies'],
+      show_popup_button: true,
+    });
+  };
+  if(!document.querySelector('script[src*="tradingview.com/tv.js"]')){
+    document.head.appendChild(script);
+  } else {
+    script.onload();
+  }
+
+  // Also run AI analysis
+  analyzeStock(ticker);
+}
+
+function changeInterval(panel, interval){
+  currentStockInterval = interval;
+  // Update tab active state
+  event.target.closest('.tv-chart-tabs').querySelectorAll('.tv-tab').forEach(t=>t.classList.remove('active'));
+  event.target.classList.add('active');
+
+  document.getElementById('stockTVChart').innerHTML='';
+  document.getElementById('stockChartTitle').textContent = currentStockTicker + ' — ' + {D:'日线',W:'周线',60:'60分钟',15:'15分钟'}[interval] + 'K线图';
+
+  new TradingView.widget({
+    container_id: 'stockTVChart',
+    symbol: currentStockTicker,
+    interval: interval,
+    timezone: 'America/New_York',
+    theme: 'light',
+    style: '1',
+    locale: 'zh_CN',
+    enable_publishing: false,
+    height: 420,
+    width: '100%',
+    studies: ['RSI@tv-basicstudies','MACD@tv-basicstudies','BB@tv-basicstudies'],
+    show_popup_button: true,
+  });
+}
+
+function showWatchCharts(){
+  if(watchlist.length===0){alert('请先添加自选股');return;}
+  const grid = document.getElementById('watchChartsGrid');
+  const section = document.getElementById('watchCharts');
+  section.style.display = 'block';
+  grid.innerHTML = '';
+
+  // Load TV script once
+  const loadCharts = ()=>{
+    watchlist.forEach((ticker, i)=>{
+      const id = 'wv-chart-'+i;
+      const div = document.createElement('div');
+      div.className = 'tv-chart-wrap';
+      div.innerHTML = `
+        <div class="tv-chart-header">
+          <div class="tv-chart-title">${ticker}</div>
+          <div class="tv-chart-tabs">
+            <button class="tv-tab active" onclick="changeWatchInterval('${id}','${ticker}','D',this)">日线</button>
+            <button class="tv-tab" onclick="changeWatchInterval('${id}','${ticker}','W',this)">周线</button>
+            <button class="tv-tab" onclick="changeWatchInterval('${id}','${ticker}','60',this)">60分</button>
+          </div>
+        </div>
+        <div id="${id}" style="height:360px;"></div>
+      `;
+      grid.appendChild(div);
+
+      setTimeout(()=>{
+        new TradingView.widget({
+          container_id: id,
+          symbol: ticker,
+          interval: 'D',
+          timezone: 'America/New_York',
+          theme: 'light',
+          style: '1',
+          locale: 'zh_CN',
+          enable_publishing: false,
+          height: 360,
+          width: '100%',
+          studies: ['RSI@tv-basicstudies','MACD@tv-basicstudies'],
+          show_popup_button: true,
+        });
+      }, i * 300);
+    });
+  };
+
+  if(!window.TradingView){
+    const script = document.createElement('script');
+    script.src = 'https://s3.tradingview.com/tv.js';
+    script.onload = loadCharts;
+    document.head.appendChild(script);
+  } else {
+    loadCharts();
+  }
+  section.scrollIntoView({behavior:'smooth'});
+}
+
+function changeWatchInterval(containerId, ticker, interval, btn){
+  btn.closest('.tv-chart-tabs').querySelectorAll('.tv-tab').forEach(t=>t.classList.remove('active'));
+  btn.classList.add('active');
+  document.getElementById(containerId).innerHTML='';
+  new TradingView.widget({
+    container_id: containerId,
+    symbol: ticker,
+    interval: interval,
+    timezone: 'America/New_York',
+    theme: 'light',
+    style: '1',
+    locale: 'zh_CN',
+    enable_publishing: false,
+    height: 360,
+    width: '100%',
+    studies: ['RSI@tv-basicstudies','MACD@tv-basicstudies'],
+    show_popup_button: true,
+  });
+}
+
+// ══════════════════════════════════════════════
+// 04 STOCKS (updated)
+// ══════════════════════════════════════════════
+async function analyzeStock(tickerArg){
+  const ticker = tickerArg || document.getElementById('stockSearchInput').value.trim().toUpperCase();
   if(!ticker) return;
   if(!apiKey){goSetup();return;}
   btnLoading('stockAnalyzeBtn',true,'▶ 深度分析');
