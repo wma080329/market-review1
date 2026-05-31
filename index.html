@@ -1188,39 +1188,39 @@ async function runMacro(){
     trade:'trade war, tariffs, import export data, supply chain'
   };
   const focus = topicMap[macroTopic]||topicMap.all;
-  try{
-    // Step 1: Get English originals
-    const sysEn = `You are a financial news aggregator. Today: ${today}. Return ONLY original English news. No translation. No analysis. Plain text.`;
-    const promptEn = `Search today's (${today}) most important news about: ${focus}. List 4-6 key news items with headline, source, and 2-3 sentence English summary. No Chinese at all.`;
-    const englishRaw = await claude(sysEn, promptEn, true);
+  const sys = `你是美股宏观分析师。今天：${today}。用中文写专业分析报告，用 ### 标题分段，**加粗**关键词。`;
+  const prompt = `请搜索今天（${today}）关于【${focus}】的重要新闻，然后按以下格式输出：
 
-    // Step 2: Chinese translation + analysis
-    const sysCn = `你是美股宏观分析师，用中文写专业分析。今天：${today}。用 ### 标题分段，**加粗**关键词。`;
-    const promptCn = `以下是今天的英文新闻原文：
+### 今日英文要闻摘要
+（用英文列出4-6条最重要的新闻，每条包括：标题、来源、2-3句英文摘要）
 
-${englishRaw}
+---
 
-请做两件事：
-1. 翻译每条新闻核心内容
-2. 进行综合分析
-
-### 今日核心事件翻译
-（每条：中文标题 + 核心内容）
+### 今日核心事件（中文翻译）
+（对上面每条新闻做中文翻译和简要解读）
 
 ### 美联储 & 货币政策
-（最新动态解读）
+（最新动态，利率预期变化）
 
-### 地缘政治 & 政策
-（影响市场的事件）
+### 地缘政治 & 政策动态
+（影响市场的政治事件）
 
 ### 经济数据
-（数据解读）
+（今日重要数据发布及解读）
 
 ### 市场影响总结
-（对美股影响：偏多/偏空/中性，受益和受损板块）`;
-    const chineseAnalysis = await claude(sysCn, promptCn, false);
-
-    setBilingual('macroOutput', englishRaw, chineseAnalysis);
+（对美股影响：偏多/偏空/中性，受益板块和受损板块）`;
+  try{
+    const result = await claude(sys, prompt, true);
+    // Split at the divider between English and Chinese
+    const parts = result.split('---');
+    if(parts.length >= 2){
+      const englishPart = parts[0].replace('### 今日英文要闻摘要','').trim();
+      const chinesePart = parts.slice(1).join('---').trim();
+      setBilingual('macroOutput', englishPart, chinesePart);
+    } else {
+      setOutput('macroOutput', result);
+    }
   }catch(e){setError('macroOutput',e.message);}
   finally{btnLoading('macroBtn',false,'▶ 获取今日宏观');}
 }
@@ -1694,37 +1694,38 @@ async function runOptionsAuto(){
   btnLoading('optAutoBtn',true,'▶ 自动搜索今日异动');
   setOutput('optAutoOutput','',true);
   const today = new Date().toLocaleDateString('zh-CN',{timeZone:'America/New_York'});
-  try{
-    // Step 1: English originals
-    const sysEn = `You are a financial data aggregator. Today: ${today}. Return ONLY original English text about options market activity. No translation.`;
-    const promptEn = `Search for today's (${today}) unusual options activity, large options trades, and options flow news. Keywords: unusual options activity today, large options sweep, dark pool activity. List findings in English only with: ticker, contract details, premium size, sentiment, and brief context.`;
-    const englishRaw = await claude(sysEn, promptEn, true);
+  const sys = `你是期权市场专家。今天：${today}。用 ### 分段，**加粗**关键词。`;
+  const prompt = `请搜索今天（${today}）美股期权市场重大异动，按以下格式输出：
 
-    // Step 2: Chinese analysis
-    const sysCn = `你是期权市场专家，用中文分析。今天：${today}。用 ### 分段，**加粗**关键词。`;
-    const promptCn = `以下是今天搜索到的英文期权异动原文：
+### Today's Options Flow (English)
+（英文列出今日主要期权异动：ticker, contract, premium, sentiment, context）
 
-${englishRaw}
-
-请翻译并分析：
+---
 
 ### 今日期权异动翻译
-（每条异动：中文翻译，包括标的、方向、规模）
+（每条中文翻译：标的、合约、规模、方向）
 
 ### 机构方向判断
-（整体偏多还是偏空？）
+（整体偏多/偏空？信心程度？）
 
 ### 最值得关注的异动
 （详细解读机构意图）
 
 ### 暗池 & 大宗交易
-（如有，进行分析）
+（如有异动，进行分析）
 
 ### 风险提示
 （注意事项）`;
-    const chineseAnalysis = await claude(sysCn, promptCn, false);
-
-    setBilingual('optAutoOutput', englishRaw, chineseAnalysis);
+  try{
+    const result = await claude(sys, prompt, true);
+    const parts = result.split('---');
+    if(parts.length >= 2){
+      const englishPart = parts[0].replace("### Today's Options Flow (English)",'').trim();
+      const chinesePart = parts.slice(1).join('---').trim();
+      setBilingual('optAutoOutput', englishPart, chinesePart);
+    } else {
+      setOutput('optAutoOutput', result);
+    }
   }catch(e){setError('optAutoOutput',e.message);}
   finally{btnLoading('optAutoBtn',false,'▶ 自动搜索今日异动');}
 }
