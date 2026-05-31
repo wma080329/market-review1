@@ -7,24 +7,42 @@
 <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=Noto+Sans+SC:wght@300;400;500&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
 <style>
 :root {
-  --bg: #080a0d;
-  --s1: #0e1117;
-  --s2: #141820;
-  --s3: #1a1f2a;
-  --border: #1e2535;
-  --border2: #252d3d;
-  --gold: #c9a84c;
-  --gold2: #e8c97a;
-  --blue: #3b82f6;
-  --green: #22c55e;
-  --red: #ef4444;
-  --yellow: #eab308;
-  --cyan: #06b6d4;
-  --text: #e2e8f0;
+  --bg: #f4f6fb;
+  --s1: #ffffff;
+  --s2: #eef0f7;
+  --s3: #e4e7f2;
+  --border: #dde1ec;
+  --border2: #c8cedf;
+  --gold: #a06c10;
+  --gold2: #7a5008;
+  --blue: #2563eb;
+  --green: #16a34a;
+  --red: #dc2626;
+  --yellow: #ca8a04;
+  --cyan: #0891b2;
+  --text: #1a2033;
   --dim: #64748b;
-  --muted: #2d3748;
+  --muted: #cbd5e1;
   --radius: 6px;
 }
+
+
+
+/* Theme toggle button */
+.theme-btn {
+  display:flex;align-items:center;gap:6px;
+  padding:5px 10px;
+  border-radius:20px;
+  border:1px solid var(--border2);
+  background:var(--s2);
+  color:var(--dim);
+  font-size:11px;
+  cursor:pointer;
+  font-family:'JetBrains Mono',monospace;
+  transition:all 0.2s;
+  white-space:nowrap;
+}
+.theme-btn:hover{border-color:var(--gold);color:var(--gold);}
 *{margin:0;padding:0;box-sizing:border-box;}
 html{scroll-behavior:smooth;}
 body{
@@ -35,12 +53,7 @@ body{
   min-height:100vh;
   overflow-x:hidden;
 }
-body::after{
-  content:'';
-  position:fixed;inset:0;
-  background:radial-gradient(ellipse 80% 50% at 50% -20%, rgba(201,168,76,0.06) 0%, transparent 60%);
-  pointer-events:none;z-index:0;
-}
+body::after{ display:none; }
 
 /* ── Sidebar ── */
 .sidebar{
@@ -544,7 +557,8 @@ body::after{
       </div>
     </div>
     <div class="topbar-right">
-      <div id="modelIndicator" class="model-tag sonnet" style="margin-right:8px;">Sonnet</div>
+      <button class="theme-btn" onclick="toggleTheme()" id="themeBtn">☀ 浅色</button>
+      <div id="modelIndicator" class="model-tag sonnet" style="margin:0 8px;">Sonnet</div>
       <div class="datetime" id="datetime">--</div>
     </div>
   </div>
@@ -874,6 +888,7 @@ window.addEventListener('DOMContentLoaded', () => {
   renderWatchTags();
   updateApiStatus();
   setModel(currentModel, true);
+  initTheme();
   if(apiKey) showPanel('macro');
   else goSetup();
   document.getElementById('chatInput').addEventListener('keydown', e=>{
@@ -902,6 +917,20 @@ function setModel(m, silent=false){
 
 function getModelId(){
   return currentModel==='opus' ? 'claude-opus-4-20250514' : 'claude-sonnet-4-20250514';
+}
+
+function toggleTheme(){
+  const isLight = document.body.classList.toggle('light');
+  localStorage.setItem('mk_theme', isLight ? 'light' : 'dark');
+  document.getElementById('themeBtn').textContent = isLight ? '🌙 深色' : '☀ 浅色';
+}
+
+function initTheme(){
+  const saved = localStorage.getItem('mk_theme');
+  if(saved === 'light'){
+    document.body.classList.add('light');
+    document.getElementById('themeBtn').textContent = '🌙 深色';
+  }
 }
 
 function updateClock(){
@@ -1062,6 +1091,30 @@ function setError(id, msg){
   el.innerHTML=`<div class="error">⚠ ${msg}</div>`;
 }
 
+// 双语显示：上英文原文，下中文翻译+分析
+function setBilingual(id, englishText, chineseText){
+  const el = document.getElementById(id);
+  if(!el) return;
+  el.className='output-box';
+  el.innerHTML=`
+    <div style="margin-bottom:16px;">
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--dim);text-transform:uppercase;">English Original</span>
+        <div style="flex:1;height:1px;background:var(--border);"></div>
+      </div>
+      <div style="font-size:12px;line-height:1.9;color:var(--dim);white-space:pre-wrap;border-left:2px solid var(--border2);padding-left:12px;">${englishText}</div>
+    </div>
+    <div style="height:1px;background:linear-gradient(90deg,var(--gold),transparent);margin-bottom:16px;opacity:0.4;"></div>
+    <div>
+      <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+        <span style="font-family:'JetBrains Mono',monospace;font-size:9px;letter-spacing:2px;color:var(--gold);text-transform:uppercase;">中文翻译 & AI分析</span>
+        <div style="flex:1;height:1px;background:var(--border);"></div>
+      </div>
+      <div>${md(chineseText)}</div>
+    </div>
+  `;
+}
+
 function btnLoading(id, loading, label='▶ 分析'){
   const b = document.getElementById(id);
   if(!b) return;
@@ -1084,38 +1137,47 @@ async function runMacro(){
   setOutput('macroOutput','',true);
   const today = new Date().toLocaleDateString('zh-CN',{timeZone:'America/New_York'});
   const topicMap = {
-    all:'宏观经济、地缘政治、美联储政策、政府政策、经济数据、贸易关税',
-    fed:'美联储政策、利率决议、官员讲话、货币政策',
-    geo:'地缘政治冲突、国际关系、战争局势、外交动态',
-    policy:'美国政府政策、监管动态、财政政策、行业扶持',
-    data:'CPI通胀、非农就业、GDP、PMI、消费者信心等经济数据',
-    trade:'贸易战、关税政策、进出口数据、供应链'
+    all:'macro economy, geopolitics, Fed policy, government policy, economic data, trade tariffs',
+    fed:'Federal Reserve policy, rate decisions, official speeches, monetary policy',
+    geo:'geopolitical conflicts, international relations, war, diplomacy',
+    policy:'US government policy, regulations, fiscal policy, industry subsidies',
+    data:'CPI inflation, nonfarm payrolls, GDP, PMI, consumer confidence',
+    trade:'trade war, tariffs, import export data, supply chain'
   };
   const focus = topicMap[macroTopic]||topicMap.all;
-  const sys = `你是美股宏观分析师，用中文撰写专业分析报告。今天日期：${today}。
-格式要求：使用 ### 标题分段，用**加粗**强调关键词，用-列表列举要点。`;
-  const prompt = `请搜索今天（${today}）最新的关于【${focus}】的重要新闻和事件。
+  try{
+    // Step 1: Get English originals
+    const sysEn = `You are a financial news aggregator. Today: ${today}. Return ONLY original English news. No translation. No analysis. Plain text.`;
+    const promptEn = `Search today's (${today}) most important news about: ${focus}. List 4-6 key news items with headline, source, and 2-3 sentence English summary. No Chinese at all.`;
+    const englishRaw = await claude(sysEn, promptEn, true);
 
-分析框架：
-### 今日核心事件
-（列出3-5个最重要的事件，每个说明市场影响）
+    // Step 2: Chinese translation + analysis
+    const sysCn = `你是美股宏观分析师，用中文写专业分析。今天：${today}。用 ### 标题分段，**加粗**关键词。`;
+    const promptCn = `以下是今天的英文新闻原文：
+
+${englishRaw}
+
+请做两件事：
+1. 翻译每条新闻核心内容
+2. 进行综合分析
+
+### 今日核心事件翻译
+（每条：中文标题 + 核心内容）
 
 ### 美联储 & 货币政策
-（最新动态，利率预期变化）
+（最新动态解读）
 
-### 地缘政治 & 政策动态
-（影响市场的政治事件）
+### 地缘政治 & 政策
+（影响市场的事件）
 
-### 经济日历 & 数据
-（今日或近期重要经济数据发布及解读）
+### 经济数据
+（数据解读）
 
 ### 市场影响总结
-（对美股整体的影响判断：偏多/偏空/中性，受益板块和受损板块）
+（对美股影响：偏多/偏空/中性，受益和受损板块）`;
+    const chineseAnalysis = await claude(sysCn, promptCn, false);
 
-请用简洁有力的中文分析，突出对股市的实际影响。`;
-  try{
-    const r = await claude(sys, prompt);
-    setOutput('macroOutput', r);
+    setBilingual('macroOutput', englishRaw, chineseAnalysis);
   }catch(e){setError('macroOutput',e.message);}
   finally{btnLoading('macroBtn',false,'▶ 获取今日宏观');}
 }
@@ -1427,30 +1489,37 @@ async function runOptionsAuto(){
   btnLoading('optAutoBtn',true,'▶ 自动搜索今日异动');
   setOutput('optAutoOutput','',true);
   const today = new Date().toLocaleDateString('zh-CN',{timeZone:'America/New_York'});
-  const sys = `你是期权市场专家，用中文分析。今天：${today}。用 ### 分段。`;
-  const prompt = `请搜索今天（${today}）美股期权市场的重要异动信息。
+  try{
+    // Step 1: English originals
+    const sysEn = `You are a financial data aggregator. Today: ${today}. Return ONLY original English text about options market activity. No translation.`;
+    const promptEn = `Search for today's (${today}) unusual options activity, large options trades, and options flow news. Keywords: unusual options activity today, large options sweep, dark pool activity. List findings in English only with: ticker, contract details, premium size, sentiment, and brief context.`;
+    const englishRaw = await claude(sysEn, promptEn, true);
 
-搜索关键词：unusual options activity today, options flow ${today}, large options trades today
+    // Step 2: Chinese analysis
+    const sysCn = `你是期权市场专家，用中文分析。今天：${today}。用 ### 分段，**加粗**关键词。`;
+    const promptCn = `以下是今天搜索到的英文期权异动原文：
 
-### 今日重大期权异动
-（列出今日被媒体或机构报道的重大期权交易，包括：标的、方向、规模、到期日）
+${englishRaw}
+
+请翻译并分析：
+
+### 今日期权异动翻译
+（每条异动：中文翻译，包括标的、方向、规模）
 
 ### 机构方向判断
-（整体偏多还是偏空？有哪些明显的机构押注？）
+（整体偏多还是偏空？）
 
 ### 最值得关注的异动
-（1-3个最有参考价值的期权异动，详细解读机构意图）
+（详细解读机构意图）
 
 ### 暗池 & 大宗交易
-（如有暗池异动信息，进行分析）
+（如有，进行分析）
 
 ### 风险提示
-（期权异动的局限性和注意事项）
+（注意事项）`;
+    const chineseAnalysis = await claude(sysCn, promptCn, false);
 
-注意：如果搜索不到具体数据，请诚实说明，并提供期权市场整体情绪分析。`;
-  try{
-    const r = await claude(sys, prompt);
-    setOutput('optAutoOutput', r);
+    setBilingual('optAutoOutput', englishRaw, chineseAnalysis);
   }catch(e){setError('optAutoOutput',e.message);}
   finally{btnLoading('optAutoBtn',false,'▶ 自动搜索今日异动');}
 }
@@ -1462,30 +1531,34 @@ async function runOptionsManual(){
   btnLoading('optManualBtn',true,'▶ 解读');
   setOutput('optManualOutput','',true);
   const sys = `你是期权市场分析师，用中文分析。用 ### 分段，**加粗**关键信息。`;
-  const prompt = `请解读以下期权异动数据：
+  const prompt = `以下是用户粘贴的期权异动数据（英文原文）：
 
 ${input}
+
+请翻译并深度分析：
+
+### 数据翻译
+（逐条中文翻译：标的、方向、到期日、规模、类型）
 
 ### 整体方向判断
 （多头/空头/中性，信心程度）
 
 ### 逐条解读
-（对每条数据分析：是扫单sweep还是大宗block？机构意图？是对冲还是方向性押注？）
+（每条：扫单还是大宗？机构意图？对冲还是方向押注？）
 
 ### 最重要信号
-（哪一条期权最值得关注，为什么）
+（最值得关注的一条，为什么）
 
-### 结合大盘背景
-（这些期权异动与当前市场环境是否吻合）
+### 结合大盘
+（与当前市场环境是否吻合）
 
 ### 交易参考
-（基于期权异动，正股可能的方向和时间窗口）
+（基于期权异动，正股可能方向和时间窗口）
 
-### 风险提示
-（反向风险，需要注意的情况）`;
+### 风险提示`;
   try{
-    const r = await claude(sys, prompt, false);
-    setOutput('optManualOutput', r);
+    const chineseAnalysis = await claude(sys, prompt, false);
+    setBilingual('optManualOutput', input, chineseAnalysis);
   }catch(e){setError('optManualOutput',e.message);}
   finally{btnLoading('optManualBtn',false,'▶ 解读');}
 }
