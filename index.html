@@ -457,6 +457,34 @@ body::after{ display:none; }
 .tv-tab.active{background:var(--gold);color:#fff;border-color:var(--gold);}
 .tv-tab:hover:not(.active){border-color:var(--gold);color:var(--gold);}
 
+/* ── Favorites ── */
+.fav-btn{
+  display:inline-flex;align-items:center;justify-content:center;
+  width:22px;height:22px;
+  background:none;border:none;cursor:pointer;
+  font-size:15px;color:var(--muted);
+  transition:all 0.15s;flex-shrink:0;
+  vertical-align:middle;margin-left:6px;
+}
+.fav-btn:hover{color:var(--yellow);}
+.fav-btn.saved{color:var(--yellow);}
+.fav-bar{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:8px;
+}
+.fav-item{
+  background:var(--s1);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px;margin-bottom:10px;
+  position:relative;
+}
+.fav-item-title{
+  font-size:11px;color:var(--gold);
+  font-family:'JetBrains Mono',monospace;
+  margin-bottom:8px;display:flex;align-items:center;justify-content:space-between;
+}
+.fav-item-time{font-size:9px;color:var(--dim);}
+.fav-empty{color:var(--muted);font-size:12px;text-align:center;padding:24px;font-style:italic;}
+
 /* ── Scrollbar ── */
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-track{background:transparent;}
@@ -547,6 +575,9 @@ body::after{ display:none; }
     <div class="divider" style="margin:8px 0;"></div>
     <div class="nav-item" id="nav-chat" onclick="showPanel('chat')">
       <span class="nav-icon">💬</span> 复盘问答
+    </div>
+    <div class="nav-item" id="nav-favorites" onclick="showPanel('favorites')">
+      <span class="nav-icon">⭐</span> 我的收藏
     </div>
   </div>
   <div class="sidebar-bottom">
@@ -889,6 +920,21 @@ AAPL 185P exp 7/18 premium $1.8M block bearish"></textarea>
       </div>
     </div>
 
+    <!-- ══ FAVORITES ══ -->
+    <div id="panel-favorites" class="panel">
+      <div class="section-header">
+        <div class="section-num">⭐</div>
+        <div class="section-info">
+          <div class="section-title">我的收藏</div>
+          <div class="section-sub">已收藏的重要分析和新闻</div>
+        </div>
+      </div>
+      <div style="display:flex;justify-content:flex-end;margin-bottom:16px;">
+        <button class="btn btn-ghost btn-sm" onclick="clearAllFavorites()">清空全部收藏</button>
+      </div>
+      <div id="favList"></div>
+    </div>
+
   </div><!-- /content -->
 </div><!-- /main -->
 
@@ -920,6 +966,90 @@ const SECTORS = [
   {etf:'XLC', name:'通信服务', cn:'通信'},
   {etf:'IBB', name:'生物科技', cn:'生物科技'},
 ];
+
+// ══════════════════════════════════════════════
+// Favorites System
+// ══════════════════════════════════════════════
+function getFavorites(){
+  return JSON.parse(localStorage.getItem('mk_favorites') || '[]');
+}
+function saveFavorites(favs){
+  localStorage.setItem('mk_favorites', JSON.stringify(favs));
+}
+function addFavorite(id, title, content){
+  const favs = getFavorites();
+  const existing = favs.findIndex(f=>f.id===id);
+  if(existing > -1){
+    favs.splice(existing, 1);
+    saveFavorites(favs);
+    const btn = document.querySelector(`[data-fav-id="${id}"]`);
+    if(btn){btn.classList.remove('saved');btn.innerHTML='☆';}
+    return false;
+  } else {
+    favs.unshift({id, title, content, time: new Date().toLocaleString('zh-CN',{timeZone:'America/New_York'})});
+    saveFavorites(favs);
+    const btn = document.querySelector(`[data-fav-id="${id}"]`);
+    if(btn){btn.classList.add('saved');btn.innerHTML='★';}
+    return true;
+  }
+}
+function renderFavorites(){
+  const favs = getFavorites();
+  const list = document.getElementById('favList');
+  if(!list) return;
+  if(favs.length===0){
+    list.innerHTML='<div class="fav-empty">暂无收藏<br>在任何分析结果旁点击 ☆ 即可收藏</div>';
+    return;
+  }
+  list.innerHTML = favs.map(f=>`
+    <div class="fav-item">
+      <div class="fav-item-title">
+        <span>${f.title}</span>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span class="fav-item-time">${f.time}</span>
+          <button class="fav-btn saved" onclick="removeFavorite('${f.id}')" title="取消收藏">★</button>
+        </div>
+      </div>
+      <div class="output-box" style="min-height:unset;">${f.content}</div>
+    </div>
+  `).join('');
+}
+function removeFavorite(id){
+  const favs = getFavorites().filter(f=>f.id!==id);
+  saveFavorites(favs);
+  renderFavorites();
+}
+function clearAllFavorites(){
+  if(confirm('确定清空所有收藏？')){
+    localStorage.removeItem('mk_favorites');
+    renderFavorites();
+  }
+}
+function addFavButton(outputId, title){
+  const el = document.getElementById(outputId);
+  if(!el || el.classList.contains('empty')) return;
+  // Remove existing fav button
+  const existing = el.parentElement.querySelector('.fav-btn');
+  if(existing) existing.remove();
+  const favId = outputId + '_' + Date.now();
+  const content = el.innerHTML;
+  const btn = document.createElement('button');
+  btn.className = 'fav-btn';
+  btn.title = '收藏';
+  btn.innerHTML = '☆';
+  btn.setAttribute('data-fav-id', favId);
+  btn.onclick = ()=>{
+    const saved = addFavorite(favId, title, content);
+    btn.innerHTML = saved ? '★' : '☆';
+    btn.classList.toggle('saved', saved);
+  };
+  const cardHeader = el.previousElementSibling;
+  if(cardHeader && cardHeader.classList.contains('card-header')){
+    cardHeader.appendChild(btn);
+  } else {
+    el.insertAdjacentElement('beforebegin', btn);
+  }
+}
 
 // ══════════════════════════════════════════════
 // Init
@@ -1004,7 +1134,8 @@ function showPanel(id){
   if(p) p.classList.add('active');
   const n = document.getElementById('nav-'+id);
   if(n) n.classList.add('active');
-  const titles = {macro:'宏观新闻',market:'大盘走势',sector:'板块 / ETF',stocks:'个股分析',watchlist:'自选股',options:'期权异动',chat:'复盘问答'};
+  const titles = {macro:'宏观新闻',market:'大盘走势',sector:'板块 / ETF',stocks:'个股分析',watchlist:'自选股',options:'期权异动',chat:'复盘问答',favorites:'我的收藏'};
+  if(id==='favorites') renderFavorites();
   document.getElementById('pageTitle').textContent = titles[id]||id;
   closeSidebar();
 }
@@ -1188,45 +1319,23 @@ async function runMacro(){
     trade:'trade war, tariffs, import export data, supply chain'
   };
   const focus = topicMap[macroTopic]||topicMap.all;
-  const sys = `你是顶级美股宏观策略分析师，有20年华尔街经验。今天：${today}。用中文写深度专业报告，用 ### 标题分段，**加粗**关键词和数据。
-重要规则：只分析宏观层面事件，严禁提及任何个股（如DELL、NVDA、AAPL等）和板块ETF的具体走势，那些属于其他模块。`;
-  const prompt = `请搜索今天（${today}）关于【${focus}】的宏观层面重要新闻。
+  const sys = `你是美股宏观分析师。今天：${today}。用中文，### 分段，**加粗**关键词。只分析宏观层面，不提个股。`;
+  const prompt = `搜索今天（${today}）【${focus}】相关宏观新闻，按格式输出：
 
-严格限制：只搜索宏观经济、货币政策、地缘政治、政府政策、经济数据类新闻。不要个股新闻，不要板块ETF新闻。
-
-### Today's Macro Headlines (English)
-（英文列出3-4条纯宏观新闻：标题、来源、2-3句英文摘要）
+### Today's Headlines (English)
+（3条最重要宏观新闻：标题、来源、1-2句摘要）
 
 ---
 
-### 今日宏观核心事件解读
-（每条新闻：中文翻译 + 深度分析，事件背景、宏观逻辑、对整体市场环境的影响）
+### 核心事件解读
+（每条新闻：中文翻译一句话 + 对市场的影响）
 
-### 美联储 & 货币政策深度解读
-- 最新动态和官员表态
-- 市场对利率路径的最新预期（具体概率数据）
-- 对股市整体估值、债市、美元的传导逻辑
+### 大盘影响判断
+- 短期偏多/偏空/震荡，原因
+- 受益板块 vs 受压板块
 
-### 地缘政治 & 政策风险
-- 具体事件描述和背景
-- 对整体市场风险偏好的影响
-- 风险升级/降级的关键信号
-
-### 经济数据解读
-- 今日发布的数据及与预期对比
-- 数据背后反映的经济趋势
-- 对美联储下一步决策的影响
-
-### 宏观环境对大盘的影响
-- **短期（1-3天）**：当前宏观环境对大盘多空力量的影响
-- **中期（1-4周）**：宏观趋势方向判断
-- **整体倾向**：明确给出偏多/偏空/震荡，说明宏观层面的理由
-
-### 受宏观影响最大的板块方向
-（只说板块方向，不提具体个股）
-
-### 明日宏观关注要点
-（明天重要经济数据发布、央行官员讲话、政治事件）`;
+### 明日关注
+（1-2个最重要的待跟踪事件）`;
   try{
     const result = await claude(sys, prompt, true);
     // Split at the divider between English and Chinese
@@ -1238,6 +1347,7 @@ async function runMacro(){
     } else {
       setOutput('macroOutput', result);
     }
+    addFavButton('macroOutput', '宏观新闻 · '+today);
   }catch(e){setError('macroOutput',e.message);}
   finally{btnLoading('macroBtn',false,'▶ 获取今日宏观');}
 }
@@ -1250,49 +1360,27 @@ async function runMarket(){
   btnLoading('marketBtn',true,'▶ 获取大盘数据');
   setOutput('marketOutput','',true);
   const today = new Date().toLocaleDateString('zh-CN',{timeZone:'America/New_York'});
-  const sys = `你是顶级美股市场策略师，有20年华尔街经验。今天：${today}。用中文写深度市场分析，用 ### 标题分段，**加粗**关键数据。所有分析要有数据支撑，有逻辑深度。`;
-  const prompt = `请搜索今天（${today}）以下市场数据并进行深度分析：
+  const sys = `你是美股市场分析师。今天：${today}。用中文，### 分段，**加粗**关键数据。`;
+  const prompt = `搜索今天（${today}）市场数据并分析：
 
 ### 美股四大指数
-（每个指数：收盘点位、涨跌幅、成交量与均量对比、当日K线形态、与关键均线的位置关系、技术面强弱判断）
+（标普500、纳指、道指、罗素2000：点位、涨跌幅、技术面一句话判断）
 
-### 全球市场联动
-（主要全球指数表现，分析全球资金流向逻辑，美股与其他市场的相关性）
+### 全球市场 & 大宗商品
+（主要全球指数、原油、黄金、大豆、美元指数DXY：数据+一句话逻辑）
 
-### 大宗商品深度分析
-- WTI原油：价格、涨跌幅、库存数据、地缘因素影响
-- 黄金：价格、与美元/国债的关系、避险需求判断
-- 大豆：价格、供需背景
-- 整体大宗商品对通胀预期的影响
+### VIX & 国债
+（VIX数值+情绪判断、10年期收益率+对股市影响）
 
-### 美元指数 & 国债收益率
-- DXY当前位置和趋势
-- 10年期/2年期收益率数据
-- 收益率曲线形态（正常/倒挂/平坦）
-- 对股市估值的影响
-
-### VIX恐慌指数解读
-- 当前数值及历史分位
-- 市场情绪处于贪婪/中性/恐惧哪个阶段
-- 期权市场隐含的波动率预期
-
-### 市场结构深度分析
-- 今日领涨/领跌板块及逻辑
-- 市场广度（上涨股数 vs 下跌股数）
-- 资金是否在轮动，方向在哪里
-- 机构行为判断（是否有大资金流入流出迹象）
-
-### 大盘技术面综合判断
-- 标普500关键支撑/压力位
-- 当前趋势强度（强势/弱势/震荡）
-- 短期（1-3天）最可能的走势路径
-- 中期（1个月）趋势判断
-
-### 今日最重要的3个市场信号
-（具体说明每个信号的含义和对后续交易的启示）`;
+### 今日市场总结
+- 市场情绪：贪婪/中性/恐惧
+- 资金流向：哪个板块吸引资金
+- 大盘短期倾向：偏多/偏空/震荡，关键支撑压力位
+- 最重要的1个市场信号`;
   try{
     const r = await claude(sys, prompt);
     setOutput('marketOutput', r);
+    addFavButton('marketOutput', '大盘走势 · '+today);
   }catch(e){setError('marketOutput',e.message);}
   finally{btnLoading('marketBtn',false,'▶ 获取大盘数据');}
 }
@@ -1329,55 +1417,25 @@ async function runSector(){
   const sys = `你是顶级美股板块策略师，有20年经验。今天：${today}。用中文写深度板块分析，### 分段，**加粗**关键数据。分析要有深度，给出明确的交易方向和具体价位。`;
   const prompt = `请搜索今天（${today}）以下板块ETF的深度分析：${etfs}
 
-对每个ETF按以下框架深度分析：
+对每个ETF分析：
 
 ### [ETF代码] — [板块名称]
+**今日**：涨跌幅、成交量（放量/缩量）、是板块整体还是个股带动
 
-**今日数据**
-- 涨跌幅、收盘价、成交量（与20日均量对比）
-- 是板块整体联动还是个别股票拉动？
+**今日板块新闻**：影响该板块的行业新闻（政策/数据/供需），利多还是利空
 
-**今日板块新闻**
-- 今天有哪些行业层面的新闻影响该板块？（政策、行业数据、供需变化等）
-- 消息面是利多还是利空，影响持续性如何？
+**技术面**：
+- 支撑位 / 压力位（具体价格）
+- 均线位置（在20日/50日均线上方还是下方）
+- RSI数值、MACD方向、K线形态
 
-**技术面深度分析**
-- 当前价格与20日/50日/200日均线的位置关系
-- 关键支撑位和压力位（具体价格）
-- RSI数值及超买超卖判断
-- MACD金叉/死叉状态
-- 今日K线形态名称及含义
-- 布林带位置（上轨/中轨/下轨）
-- 成交量是否放量/缩量，量价关系是否健康
-- 价格行为学信号（突破/回踩/反转迹象）
+**龙头股**：前2只龙头今日表现
 
-**消息面催化剂**
-- 今日影响该板块的具体新闻事件
-- 消息对板块的影响是短期还是中长期？
-- 是利多还是利空，程度如何？
-
-**资金流向**
-- 机构是否净买入/净卖出
-- 与大盘资金流向的对比
-
-**板块内龙头股**
-- 前3只龙头股今日表现及原因
-- 哪只龙头最强/最弱，说明原因
-
-**后续走势判断**
-- 短期（1-3天）：偏多/偏空/震荡，关键价位
-- 中期（1-4周）：趋势方向
-- 主要风险：哪些因素可能导致判断失效
-
-**具体操作参考**
-- 方向：做多/做空/观望
-- 入场区间（具体价格）
-- 止损位（具体价格）
-- 目标位（具体价格）
-- 风险回报比`;
+**操作建议**：偏多/偏空/观望，入场区间，止损位，目标位`;
   try{
     const r = await claude(sys, prompt);
     setOutput('sectorOutput', r);
+    addFavButton('sectorOutput', '板块分析 '+etfs+' · '+today);
   }catch(e){setError('sectorOutput',e.message);}
   finally{btnLoading('sectorBtn',false,'▶ 分析');}
 }
@@ -1387,39 +1445,26 @@ async function runAllSectors(){
   btnLoading('allSectorBtn',true,'▶ 全扫描');
   setOutput('allSectorOutput','',true);
   const today = new Date().toLocaleDateString('zh-CN',{timeZone:'America/New_York'});
-  const sys = `你是顶级美股板块策略师。今天：${today}。用中文写深度板块全景分析，### 分段，**加粗**关键数据。`;
-  const prompt = `请搜索今天（${today}）美股所有主要板块ETF表现，生成深度全景分析：
+  const sys = `你是美股板块分析师。今天：${today}。用中文，### 分段，**加粗**关键数据。`;
+  const prompt = `搜索今天（${today}）美股主要板块ETF表现：
 
-### 今日板块涨跌全景（强→弱排行）
-列出每个板块：ETF代码、板块名、涨跌幅、成交量异动（放量/缩量）、技术面一句话判断
+### 今日板块涨跌排行（强→弱）
+每行：ETF代码、板块名、涨跌幅、成交量异动、一句话简评
 
 ### 今日市场主线
-- 今天市场的核心交易主题是什么？
-- 资金在追哪个叙事（AI/能源/防御/消费...）？
-- 这个主线能持续多久？有什么催化剂和风险？
+今天资金在追什么主题？能持续吗？
 
-### 最强板块深度分析
-- 为什么强？消息面+技术面双重验证
-- 龙头股表现，是否有持续性
-- 具体交易机会（入场点、止损位）
+### 最强板块
+为什么强，是否可追，入场参考
 
-### 最弱板块深度分析
-- 为什么弱？是暂时回调还是趋势转变？
-- 是否有反弹机会，还是继续回避？
+### 最弱板块
+为什么弱，是回调机会还是继续回避
 
-### 资金流向深度解读
-- 今日资金从哪些板块流出，流向哪里
-- 这种流向反映了机构对市场的什么判断？
-- 与过去一周的资金流向对比，是否有新变化？
+### 资金流向
+从哪流向哪，反映机构什么判断
 
-### 板块轮动判断
-- 当前市场处于轮动的哪个阶段？
-- 下一个可能轮动到的板块是哪个，逻辑是什么？
-
-### 明日板块操作重点
-- 明日最值得做多的1-2个板块（具体理由+关键价位）
-- 明日需要回避的板块
-- 需要重点监控的板块信号`;
+### 明日关注
+最值得关注的1-2个板块机会`;
   try{
     const r = await claude(sys, prompt);
     setOutput('allSectorOutput', r);
@@ -1440,24 +1485,20 @@ async function runStocks(){
 
   try{
     const [gr, lr] = await Promise.all([
-      claude(sys, `请搜索今天（${today}）标普500和纳斯达克100中涨幅最大的前5只个股，深度分析：
+      claude(sys, `搜索今天（${today}）标普500和纳斯达克100涨幅前5个股：
 
-对每只股票：
-### [代码] [公司名] +X%
-**上涨原因**：具体消息面催化剂（财报/升级/政策/行业事件）
-**技术面**：今日K线形态、成交量是否放量、突破了什么关键位、RSI位置
-**基本面速览**：市值、PE、本季度营收增速
-**是否追涨**：上涨是否可持续，还是短期炒作，给出明确建议
-**关注价位**：回调支撑位，追涨压力位`),
-      claude(sys, `请搜索今天（${today}）标普500和纳斯达克100中跌幅最大的前5只个股，深度分析：
+每只股票：
+**[代码] [名称] +X%**
+- 上涨原因（一句话）
+- 技术面：K线形态、成交量、关键突破位
+- 是否可追：明确说明，给出支撑位和压力位`),
+      claude(sys, `搜索今天（${today}）标普500和纳斯达克100跌幅前5个股：
 
-对每只股票：
-### [代码] [公司名] -X%
-**下跌原因**：具体消息面（财报不及预期/降级/行业利空/宏观压力）
-**技术面**：今日K线、是否跌破关键支撑、成交量放量说明恐慌抛售还是主动做空
-**超卖判断**：RSI是否超卖，历史上类似情况后的反弹概率
-**反弹机会**：是否值得抄底，关键条件是什么
-**风险评估**：如果继续下跌，下一个支撑在哪里`)
+每只股票：
+**[代码] [名称] -X%**
+- 下跌原因（一句话）
+- 技术面：是否跌破关键支撑、RSI是否超卖
+- 是否抄底：明确说明，给出支撑位`)
     ]);
 
     setOutput('gainersOutput', gr);
@@ -1647,58 +1688,90 @@ async function analyzeStock(tickerArg){
   setOutput('stockDeepOutput','',true);
   const today = new Date().toLocaleDateString('zh-CN',{timeZone:'America/New_York'});
   const sys = `你是美股深度分析师，用中文撰写专业个股报告。今天：${today}。用 ### 分段。`;
-  const prompt = `请对 ${ticker} 进行今日深度专业分析：
+  const prompt = `对 ${ticker} 做全方位深度分析：
 
-### 今日表现概览
-- 收盘价、涨跌幅、成交量（与20日均量对比，放量/缩量多少倍）
-- 与大盘（标普500）和所属板块ETF的相对强弱
-- 今日是否创近期新高/新低
+### 宏观背景
+当前宏观环境（利率/通胀/美联储政策）对该股的影响，是顺风还是逆风
 
-### 消息面深度解读
-- 今日有无重要催化剂（财报/分析师评级/公司公告/行业新闻）
-- 如有消息，对股价的影响是短期炒作还是基本面改变？
-- 近期（1个月内）重要事件回顾
+### 今日表现
+收盘价、涨跌幅、成交量（与20日均量对比，放量/缩量多少倍）、与大盘和所属板块ETF的相对强弱
+
+### 消息面
+今日及近期重要催化剂（财报/分析师评级/公司公告/行业政策），是短期炒作还是基本面改变
+
+### 板块背景
+所属板块今日强弱，是板块整体联动还是个股独立行情，板块内横向对比
 
 ### 技术面全面分析
-- **均线系统**：20日/50日/200日均线具体价位，多头/空头排列，价格在哪条均线上方/下方
-- **支撑位**（3个关键支撑，注明强弱）
-- **压力位**（3个关键压力，注明强弱）
-- **RSI**：具体数值，超买(>70)/超卖(<30)/中性，与价格的背离情况
-- **MACD**：金叉/死叉，柱状图收缩/扩张，动能方向
-- **布林带**：价格在上轨/中轨/下轨，带宽收窄/扩张
-- **成交量分析**：量价关系，是否有异常成交量，机构建仓/出货迹象
-- **今日K线形态**：形态名称、含义、可靠性
-- **K线组合形态**：近3-5天K线组合释放什么信号
-- **价格行为学**：关键价格行为信号（假突破/真突破/支撑确认/压力拒绝）
 
-### 基本面分析
-- 市值、PE(TTM)、PEG、PS
-- 最近一季营收和利润增速
-- 与行业平均估值对比（高估/低估/合理）
-- 公司核心竞争优势和风险点
+**支撑与压力**
+- 关键支撑位（2个，注明强弱）
+- 关键压力位（2个，注明强弱）
+- 斐波那契回撤位（0.382/0.5/0.618）
+- 趋势线位置（上升/下降通道）
 
-### 板块横向对比
-- 与同板块前5龙头今日表现对比
-- ${ticker}是板块整体带动还是个股独立行情？
-- 在板块内的相对排名和强弱地位
+**均线系统**
+- 5日/20日/200日均线具体价位
+- 均线多头/空头排列判断
+- 黄金交叉/死亡交叉是否出现
+- Rolling VWAP（5日）当前价格与VWAP的位置关系
 
-### 机构动向
-- 近期分析师评级变动
-- 机构持仓变化（如有数据）
-- 内部人士买卖动向
+**动能指标**
+- RSI：具体数值，超买(>70)/超卖(<30)，是否出现顶背离/底背离
+- MACD：金叉/死叉，柱状图收缩还是扩张，是否出现背离
+- Stochastic KD：数值，金叉/死叉，超买/超卖区间
+- Williams %R：数值及判断
+- ADX：趋势强度数值（>25强趋势/<20无趋势）
+
+**波动率**
+- 布林带：当前价格在上轨/中轨/下轨位置，带宽是收窄（蓄力）还是扩张（爆发）
+- ATR真实波幅：当前波动率水平
+
+**成交量分析**
+- 成交量与20日均量对比
+- OBV能量潮：与价格是否背离
+- 量价关系判断：价涨量增/价涨量缩/价跌量增/价跌量缩，含义分析
+
+**单根K线形态**
+识别今日K线：锤子线/上吊线/射击之星/倒锤子线/十字星/长上影线/长下影线/大阳线/大阴线/螺旋桨线，说明含义
+
+**K线组合形态（近3-5天）**
+识别最近K线组合：
+- 看涨：早晨之星/晨星十字/吞没看涨/穿刺/三白兵/启明星
+- 看跌：黄昏之星/吞没看跌/乌云盖顶/三黑鸦/黄昏十字星
+- 说明可靠性和历史胜率
+
+**图表大形态（近期走势）**
+识别当前形态：
+- 看涨：杯柄/反向头肩底/双底W底/上升三角/牛旗整理/矩形突破/圆弧底
+- 看跌：头肩顶/双顶/下降三角/熊旗/圆弧顶
+- 中性蓄力：楔形/对称三角/矩形震荡
+- 说明形态完成度和突破条件
+
+**价格行为学信号**
+- 是否出现假突破（Fakeout）
+- 支撑变压力/压力变支撑的关键位
+- 缺口类型（突破缺口/逃逸缺口/耗尽缺口）
+- 针形反转或内外包线信号
+
+### 期权市场信号
+近期该股期权市场有无异动，隐含波动率（IV）水平，Put/Call比率，市场对后续走势的预期
+
+### 基本面
+市值、PE、最近一季营收和利润增速、与行业估值对比、核心竞争优势和主要风险
 
 ### 综合操作建议
-- **方向判断**：偏多/偏空/中性，信心程度（高/中/低）
+- **方向**：偏多/偏空/观望，信心程度（高/中/低）
 - **入场区间**：具体价格区间和入场条件
 - **止损位**：具体价格，止损逻辑
-- **目标位1**（保守）：具体价格
-- **目标位2**（激进）：具体价格
+- **目标位1**（保守）/ **目标位2**（激进）：具体价格
 - **风险回报比**：计算具体数值
-- **持仓周期建议**：短线/波段/中线
-- **主要风险因素**：哪些情况会让判断失效`;
+- **持仓周期**：短线/波段/中线
+- **主要风险**：什么情况会让判断失效`;
   try{
     const r = await claude(sys, prompt);
     setOutput('stockDeepOutput', r);
+    addFavButton('stockDeepOutput', ticker+' 个股分析 · '+today);
   }catch(e){setError('stockDeepOutput',e.message);}
   finally{
     btnLoading('stockAnalyzeBtn',false,'▶ 深度分析');
@@ -1757,24 +1830,11 @@ async function runWatchlist(){
 
   try{
     const results = await Promise.all(watchlist.map(async ticker=>{
-      const r = await claude(sys, `对 ${ticker} 做今日复盘深度分析：
-
-**今日表现**：收盘价、涨跌幅、成交量（放量/缩量）、与大盘对比强弱
-
-**技术面**：
-- 关键支撑位和压力位（具体价格）
-- 均线位置（价格在20日/50日均线上方还是下方）
-- RSI数值和超买超卖判断
-- 今日K线形态及含义
-- 量价关系是否健康
-
-**消息面**：今日有无重要新闻、财报、分析师评级变动
-
-**后续走势判断**：
-- 短期（1-3天）偏多/偏空/震荡
-- 关键价位：突破哪里看多，跌破哪里看空
-
-**操作建议**：入场区间、止损位、目标位、风险回报比`);
+      const r = await claude(sys, `复盘 ${ticker} 今日：
+- 涨跌幅、成交量、与大盘强弱
+- 支撑位/压力位、RSI、K线形态
+- 今日消息面
+- 短期偏多/偏空，入场区间、止损位、目标位`);
       return {ticker, result: r};
     }));
 
@@ -1839,6 +1899,7 @@ async function runOptionsAuto(){
     } else {
       setOutput('optAutoOutput', result);
     }
+    addFavButton('optAutoOutput', '期权异动 · '+today);
   }catch(e){setError('optAutoOutput',e.message);}
   finally{btnLoading('optAutoBtn',false,'▶ 自动搜索今日异动');}
 }
@@ -1850,44 +1911,23 @@ async function runOptionsManual(){
   btnLoading('optManualBtn',true,'▶ 解读');
   setOutput('optManualOutput','',true);
   const sys = `你是期权市场分析师，用中文分析。用 ### 分段，**加粗**关键信息。`;
-  const prompt = `以下是用户粘贴的期权异动数据（英文原文）：
+  const prompt = `解读以下期权异动数据：
 
 ${input}
 
-请深度翻译并分析：
+### 数据翻译
+（每条：标的、Call/Put、行权价、到期日、规模、Sweep/Block、方向）
 
-### 数据逐条翻译
-（每条：标的、合约类型Call/Put、行权价、到期日、规模、交易类型Sweep/Block、方向Bullish/Bearish）
+### 整体判断
+偏多/偏空/中性，主要依据
 
-### 整体方向判断
-- 今日期权市场整体偏多还是偏空？
-- 信心程度（强/中/弱），依据是什么？
-- 机构资金规模有多大（合计保费）？
+### 最值得关注的信号
+哪条最重要，机构意图是方向押注还是对冲
 
-### 逐条深度解读
-对每条异动：
-- 这是Sweep（激进扫单）还是Block（大宗谈判）？两者含义不同
-- 成交在Bid还是Ask？（主动买入还是被动成交）
-- 是方向性押注还是对冲保护？判断依据
-- 对应的正股价格意味着多大的涨跌幅预期？
-- 机构选择这个到期日的逻辑（短期事件驱动/中期趋势/长期布局）
+### 正股操作参考
+方向、时间窗口、入场区间、止损位
 
-### 最重要的1-2个信号
-（详细分析为什么最值得关注，历史上类似异动后的成功率）
-
-### 暗池数据解读（如有）
-（暗池成交量、与公开市场的差异、机构意图）
-
-### 结合大盘和板块
-- 这些期权异动与当前大盘走势是否吻合？
-- 是顺势还是逆势布局？
-- 相关板块今日表现是否支持这个方向？
-
-### 正股交易参考
-- 基于期权异动，正股方向判断
-- 时间窗口（期权到期前多少天是关键窗口）
-- 入场区间、止损位、目标位
-- 风险提示：期权异动也可能是对冲或误导，不能盲目跟随`;
+### 风险提示`;
   try{
     const chineseAnalysis = await claude(sys, prompt, false);
     setBilingual('optManualOutput', input, chineseAnalysis);
