@@ -576,6 +576,9 @@ body::after{ display:none; }
     <div class="nav-item" id="nav-chat" onclick="showPanel('chat')">
       <span class="nav-icon">💬</span> 复盘问答
     </div>
+    <div class="nav-item" id="nav-picks" onclick="showPanel('picks')">
+      <span class="nav-icon">🎯</span> AI每日精选
+    </div>
     <div class="nav-item" id="nav-favorites" onclick="showPanel('favorites')">
       <span class="nav-icon">⭐</span> 我的收藏
     </div>
@@ -920,6 +923,30 @@ AAPL 185P exp 7/18 premium $1.8M block bearish"></textarea>
       </div>
     </div>
 
+    <!-- ══ AI PICKS ══ -->
+    <div id="panel-picks" class="panel">
+      <div class="section-header">
+        <div class="section-num">🎯</div>
+        <div class="section-info">
+          <div class="section-title">AI 每日精选</div>
+          <div class="section-sub">从标普500综合多因子筛选 · 仅供参考 · 不构成投资建议</div>
+        </div>
+      </div>
+
+      <div style="background:rgba(234,179,8,0.08);border:1px solid rgba(234,179,8,0.2);border-radius:6px;padding:12px 16px;margin-bottom:20px;font-size:12px;color:var(--dim);line-height:1.7;">
+        ⚠ AI基于当日技术面、消息面、板块资金流向、成交量、期权信号等多因子综合筛选，<strong style="color:var(--text);">结果仅供参考，不构成投资建议。</strong>请结合自己判断做决策。
+      </div>
+
+      <div class="run-bar mb16">
+        <div class="run-bar-left">AI综合今日多因子从标普500筛选 <strong>3只</strong> 最具入场价值的个股</div>
+        <button class="btn btn-gold btn-sm" id="picksBtn" onclick="runPicks()">▶ 开始今日选股</button>
+      </div>
+
+      <div id="picksOutput" class="output-box empty" style="min-height:200px;">
+        点击"开始今日选股"，AI会综合分析今日市场环境后给出推荐...
+      </div>
+    </div>
+
     <!-- ══ FAVORITES ══ -->
     <div id="panel-favorites" class="panel">
       <div class="section-header">
@@ -993,6 +1020,57 @@ function addFavorite(id, title, content){
     return true;
   }
 }
+// ══════════════════════════════════════════════
+// AI Picks
+// ══════════════════════════════════════════════
+async function runPicks(){
+  if(!apiKey){goSetup();return;}
+  btnLoading('picksBtn',true,'▶ 开始今日选股');
+  setOutput('picksOutput','',true);
+  const today = new Date().toLocaleDateString('zh-CN',{timeZone:'America/New_York'});
+  const sys = `你是专业美股选股分析师。今天：${today}。用中文，### 分段，**加粗**关键数据。所有推荐仅供参考，不构成投资建议。`;
+  const prompt = `请搜索今天（${today}）市场情况，从标普500成分股中综合以下因子筛选出3只最具入场价值的个股：
+
+筛选因子（按权重）：
+1. 技术面突破或强势形态（权重30%）：今日是否突破关键压力位、出现强势K线形态、均线多头排列
+2. 消息面催化剂（权重25%）：财报超预期、分析师升级、重大利好公告
+3. 板块资金流向（权重20%）：所属板块今日是否有明显资金流入
+4. 成交量异动（权重15%）：放量突破，成交量显著高于均量
+5. 期权信号（权重10%）：是否有看涨期权异动
+
+大盘环境评估：先判断今日大盘环境是否适合做多，如果大盘环境差请说明并调整推荐策略。
+
+输出格式：
+
+### 今日大盘环境
+（一句话判断：适合做多/谨慎/不适合，主要依据）
+
+### 🥇 精选一：[代码] [公司名]
+**推荐理由**：综合各因子说明为什么选这只
+**技术面**：关键形态、突破位、支撑压力
+**消息面**：今日催化剂
+**入场区间**：具体价格
+**止损位**：具体价格
+**目标位**：保守目标 / 激进目标
+**风险回报比**：具体数值
+**主要风险**：什么情况判断失效
+
+### 🥈 精选二：[代码] [公司名]
+（同上格式）
+
+### 🥉 精选三：[代码] [公司名]
+（同上格式）
+
+### 今日选股逻辑总结
+（今天为什么选这3只，共同的市场逻辑是什么）`;
+  try{
+    const r = await claude(sys, prompt, true);
+    setOutput('picksOutput', r);
+    addFavButton('picksOutput', 'AI每日精选 · '+today);
+  }catch(e){setError('picksOutput',e.message);}
+  finally{btnLoading('picksBtn',false,'▶ 开始今日选股');}
+}
+
 function renderFavorites(){
   const favs = getFavorites();
   const list = document.getElementById('favList');
@@ -1134,7 +1212,7 @@ function showPanel(id){
   if(p) p.classList.add('active');
   const n = document.getElementById('nav-'+id);
   if(n) n.classList.add('active');
-  const titles = {macro:'宏观新闻',market:'大盘走势',sector:'板块 / ETF',stocks:'个股分析',watchlist:'自选股',options:'期权异动',chat:'复盘问答',favorites:'我的收藏'};
+  const titles = {macro:'宏观新闻',market:'大盘走势',sector:'板块 / ETF',stocks:'个股分析',watchlist:'自选股',options:'期权异动',chat:'复盘问答',picks:'AI每日精选',favorites:'我的收藏'};
   if(id==='favorites') renderFavorites();
   document.getElementById('pageTitle').textContent = titles[id]||id;
   closeSidebar();
